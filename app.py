@@ -141,19 +141,18 @@ st.markdown(
     <style>
     div.block-container, [data-testid="stAppViewBlockContainer"]{
         max-width:960px;
-        min-width:760px;
         margin:0 auto;
         padding-left:1.5rem;
         padding-right:1.5rem;
-        overflow-x:auto;
     }
-    /* 모바일에서도 5칸 가로 배치를 유지 (기본은 세로로 쌓임) */
+    /* 5칸 가로 배치는 유지하되, 화면이 좁아지면 칸 너비 자체가 줄어들도록 함 */
     div[data-testid="stHorizontalBlock"]{
         flex-wrap:nowrap !important;
         flex-direction:row !important;
+        gap:6px !important;
     }
     div[data-testid="column"]{
-        min-width:130px !important;
+        min-width:110px;
         width:auto !important;
     }
     .day-card{border:1px solid #DDE2EA;border-radius:10px;padding:6px;min-height:112px;background:#fff;}
@@ -167,6 +166,42 @@ st.markdown(
           overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
     .month-title{background:#0F766E;color:#fff;padding:7px 12px;border-radius:8px;
                  font-weight:800;font-size:16px;text-align:center;margin-bottom:10px;}
+
+    /* ===== 모바일 화면 (가로폭이 좁을 때) - 가로 스크롤 대신 요소 자체를 축소 ===== */
+    @media (max-width: 700px){
+        div.block-container, [data-testid="stAppViewBlockContainer"]{
+            padding-left:0.4rem;
+            padding-right:0.4rem;
+        }
+        div[data-testid="stHorizontalBlock"]{
+            gap:3px !important;
+        }
+        div[data-testid="column"]{
+            min-width:0;
+            padding:0 !important;
+        }
+        .day-card{padding:3px;min-height:82px;border-radius:6px;}
+        .day-num{font-size:10px;}
+        .holiday-label{font-size:7.5px;margin-top:3px;line-height:1.2;}
+        .pill{font-size:8px;padding:2px 3px;margin-top:2px;border-radius:5px;}
+        .month-title{font-size:13px;padding:5px 8px;}
+        h1{font-size:20px !important;}
+        [data-testid="stCaptionContainer"]{font-size:11px !important;}
+        div[data-testid="column"] .stButton button{
+            font-size:8.5px !important;
+            padding:1px 3px !important;
+            min-height:0 !important;
+            height:auto !important;
+        }
+        div[data-testid="column"] [data-baseweb="select"]{
+            font-size:8.5px !important;
+            min-height:0 !important;
+        }
+        div[data-testid="column"] [data-baseweb="select"] > div{
+            padding:1px 4px !important;
+            min-height:22px !important;
+        }
+    }
     </style>
     """,
     unsafe_allow_html=True,
