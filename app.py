@@ -35,7 +35,7 @@ HOLIDAYS = {
 }
 
 # ============================================================
-# SQLite 저장소 (구글시트/외부 계정 불필요, 앱 안에서 자체 저장)
+# SQLite 저장소
 # ============================================================
 def get_conn():
     conn = sqlite3.connect(DB_PATH, check_same_thread=False)
@@ -134,7 +134,7 @@ def color_for(name, team):
 
 
 # ============================================================
-# 스타일
+# 스타일 (아이폰 12 대응 정밀 미디어 쿼리 포함)
 # ============================================================
 st.markdown(
     """
@@ -142,64 +142,70 @@ st.markdown(
     div.block-container, [data-testid="stAppViewBlockContainer"]{
         max-width:960px;
         margin:0 auto;
-        padding-left:1.5rem;
-        padding-right:1.5rem;
+        padding-left:1.0rem;
+        padding-right:1.0rem;
     }
-    /* 5칸 가로 배치는 유지하되, 화면이 좁아지면 칸 너비 자체가 줄어들도록 함 */
+    
+    /* 5칸 가로 배치 강제 및 여백 최적화 */
     div[data-testid="stHorizontalBlock"]{
-        flex-wrap:nowrap !important;
-        flex-direction:row !important;
-        gap:6px !important;
+        display: flex !important;
+        flex-wrap: nowrap !important;
+        flex-direction: row !important;
+        gap: 6px !important;
     }
     div[data-testid="column"]{
-        min-width:110px;
-        width:auto !important;
+        flex: 1 1 0% !important;
+        min-width: 0 !important;
+        width: 100% !important;
     }
-    .day-card{border:1px solid #DDE2EA;border-radius:10px;padding:6px;min-height:112px;background:#fff;}
-    .day-card.outside{background:#F0F1F4;opacity:.6;border-style:dashed;}
+    
+    /* 디자인 요소 */
+    .day-card{border:1px solid #DDE2EA;border-radius:10px;padding:8px;min-height:112px;background:#fff;}
+    .day-card.outside{background:#F0F1F4;opacity:.5;border-style:dashed;}
     .day-card.holiday{background:#FDF2F2;border-color:#E4A5A5;}
     .day-card.full{background:#FCEEDD;border-color:#B45309;}
-    .day-num{font-weight:700;font-size:12.5px;}
+    .day-num{font-weight:700;font-size:13px;color:#1E293B;}
     .day-num.holiday{color:#B91C1C;}
     .holiday-label{font-size:10.5px;color:#B91C1C;font-weight:700;margin-top:6px;}
-    .pill{border-radius:7px;padding:3px 5px;font-size:11px;font-weight:700;color:#fff;margin-top:4px;
-          overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-    .month-title{background:#0F766E;color:#fff;padding:7px 12px;border-radius:8px;
-                 font-weight:800;font-size:16px;text-align:center;margin-bottom:10px;}
+    .pill{border-radius:7px;padding:4px 6px;font-size:11px;font-weight:700;color:#fff;margin-top:4px;
+          overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center;}
+    .month-title{background:#0F766E;color:#fff;padding:8px 12px;border-radius:8px;
+                 font-weight:800;font-size:18px;text-align:center;margin-bottom:12px;}
 
-    /* ===== 모바일 화면 (가로폭이 좁을 때) - 가로 스크롤 대신 요소 자체를 축소 ===== */
-    @media (max-width: 700px){
+    /* 컴팩트한 취소/신청 버튼 스타일 관리를 위한 기본 마진 제거 */
+    div[data-testid="column"] button {
+        margin-top: 4px !important;
+        width: 100% !important;
+    }
+
+    /* ===== 아이폰 12 및 모바일 환경 (화면 폭 430px 이하 완벽 대응) ===== */
+    @media (max-width: 430px){
         div.block-container, [data-testid="stAppViewBlockContainer"]{
-            padding-left:0.4rem;
-            padding-right:0.4rem;
+            padding-left:0.25rem !important;
+            padding-right:0.25rem !important;
         }
         div[data-testid="stHorizontalBlock"]{
             gap:3px !important;
         }
-        div[data-testid="column"]{
-            min-width:0;
-            padding:0 !important;
-        }
-        .day-card{padding:3px;min-height:82px;border-radius:6px;}
+        .day-card{padding:4px;min-height:75px;border-radius:6px;}
         .day-num{font-size:10px;}
-        .holiday-label{font-size:7.5px;margin-top:3px;line-height:1.2;}
-        .pill{font-size:8px;padding:2px 3px;margin-top:2px;border-radius:5px;}
-        .month-title{font-size:13px;padding:5px 8px;}
-        h1{font-size:20px !important;}
-        [data-testid="stCaptionContainer"]{font-size:11px !important;}
-        div[data-testid="column"] .stButton button{
-            font-size:8.5px !important;
-            padding:1px 3px !important;
-            min-height:0 !important;
-            height:auto !important;
+        .holiday-label{font-size:7px;margin-top:2px;line-height:1.1;}
+        .pill{font-size:8.5px;padding:2px 3px;margin-top:2px;border-radius:4px;}
+        .month-title{font-size:14px;padding:6px 8px;margin-bottom:8px;}
+        h1{font-size:18px !important;}
+        [data-testid="stCaptionContainer"]{font-size:10px !important;}
+        
+        /* 모바일용 버튼 텍스트 초소형화 및 여백 제거 */
+        div[data-testid="column"] button p {
+            font-size: 8px !important;
+            font-weight: bold !important;
         }
-        div[data-testid="column"] [data-baseweb="select"]{
-            font-size:8.5px !important;
-            min-height:0 !important;
-        }
-        div[data-testid="column"] [data-baseweb="select"] > div{
-            padding:1px 4px !important;
-            min-height:22px !important;
+        div[data-testid="column"] button {
+            padding: 1px 2px !important;
+            min-height: 20px !important;
+            height: 20px !important;
+            line-height: 1 !important;
+            border-radius: 4px !important;
         }
     }
     </style>
@@ -214,6 +220,10 @@ today = datetime.date.today()
 if "cur_year" not in st.session_state:
     st.session_state.cur_year = today.year
     st.session_state.cur_month = today.month
+
+# 특정 날짜의 신청 패널 오픈 여부를 저장할 딕셔너리 상태 초기화
+if "open_add_panel" not in st.session_state:
+    st.session_state.open_add_panel = {}
 
 # ============================================================
 # 헤더
@@ -242,9 +252,9 @@ with st.expander("팀원 이름 수정"):
 # ============================================================
 # 월 네비게이션
 # ============================================================
-nav1, nav2, nav3, nav4 = st.columns([1, 3, 1, 2])
+nav1, nav2, nav3, nav4 = st.columns([1.2, 2.6, 1.2, 2], gap="small")
 with nav1:
-    if st.button("‹ 이전 달"):
+    if st.button("‹ 이전 달", key="btn-prev-month"):
         m = st.session_state.cur_month - 1
         y = st.session_state.cur_year
         if m == 0:
@@ -252,7 +262,7 @@ with nav1:
         st.session_state.cur_year, st.session_state.cur_month = y, m
         st.rerun()
 with nav3:
-    if st.button("다음 달 ›"):
+    if st.button("다음 달 ›", key="btn-next-month"):
         m = st.session_state.cur_month + 1
         y = st.session_state.cur_year
         if m == 13:
@@ -260,7 +270,7 @@ with nav3:
         st.session_state.cur_year, st.session_state.cur_month = y, m
         st.rerun()
 with nav4:
-    if st.button("이번달로 이동"):
+    if st.button("이번달로 이동", key="btn-today"):
         st.session_state.cur_year, st.session_state.cur_month = today.year, today.month
         st.rerun()
 
@@ -275,7 +285,7 @@ weeks = month_weeks(cur_year, cur_month)
 
 header_cols = st.columns(5)
 for c, label in zip(header_cols, DAY_LABELS):
-    c.markdown(f"**{label}**")
+    c.markdown(f"<div style='text-align:center; font-weight:700; font-size:13px;'>{label}</div>", unsafe_allow_html=True)
 
 for week in weeks:
     cols = st.columns(5)
@@ -295,7 +305,8 @@ for week in weeks:
             css_class += " full"
 
         with col:
-            date_label = f"{date.day}" + ("" if in_month else " (다른달)")
+            # 1. 날짜 카드 렌더링 (날짜 및 이미 신청한 사람 상단 표시)
+            date_label = f"{date.day}" + ("" if in_month else "·외")
             num_class = "day-num holiday" if holiday_name else "day-num"
             html = f'<div class="{css_class}"><div class="{num_class}">{date_label}</div>'
             if holiday_name:
@@ -306,20 +317,38 @@ for week in weeks:
             html += "</div>"
             st.markdown(html, unsafe_allow_html=True)
 
+            # 2. 버튼 및 인터랙션 제어
             if not holiday_name:
+                # 취소 버튼 레이아웃
                 for n in booked:
-                    if st.button(f"취소: {n}", key=f"cancel-{date_str}-{n}"):
+                    if st.button(f"✕ {n}", key=f"cancel-{date_str}-{n}", help=f"{n} 신청 취소"):
                         remove_booking(date_str, n)
                         st.rerun()
+
+                # 신청 버튼 레이아웃 (새로운 UX 구조)
                 if len(booked) < MAX_PER_DAY:
                     available = [m for m in team if m not in booked]
                     if available:
-                        sel = st.selectbox(
-                            "신청자", available, key=f"sel-{date_str}", label_visibility="collapsed"
-                        )
-                        if st.button("+ 신청", key=f"add-{date_str}"):
-                            add_booking(date_str, sel)
-                            st.rerun()
+                        # 현재 날짜의 패널이 열려있는지 확인
+                        is_panel_open = st.session_state.open_add_panel.get(date_str, False)
+
+                        if not is_panel_open:
+                            # 기본 상태: + 신청 버튼 하나만 보여줌
+                            if st.button("+ 신청", key=f"open-{date_str}"):
+                                st.session_state.open_add_panel[date_str] = True
+                                st.rerun()
+                        else:
+                            # 열린 상태: 신청 가능한 팀원 목록이 버튼으로 쭈르륵 나옴
+                            for member in available:
+                                if st.button(f"✍ {member}", key=f"add-{date_str}-{member}"):
+                                    add_booking(date_str, member)
+                                    st.session_state.open_add_panel[date_str] = False # 신청 후 닫기
+                                    st.rerun()
+                            
+                            # 펼치기 취소 버튼
+                            if st.button("닫기", key=f"close-{date_str}"):
+                                st.session_state.open_add_panel[date_str] = False
+                                st.rerun()
 
 st.divider()
 st.caption(
