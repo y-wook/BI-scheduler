@@ -71,7 +71,6 @@ def save_team(names):
     old_names = load_team()
     conn.execute("DELETE FROM team")
     conn.executemany("INSERT INTO team (name) VALUES (?)", [(n,) for n in names])
-    # 예약 데이터의 이름도 함께 갱신 (팀원 이름 변경 시)
     for old, new in zip(old_names, names):
         if old != new:
             conn.execute("UPDATE bookings SET name = ? WHERE name = ?", (new, old))
@@ -140,16 +139,23 @@ def color_for(name, team):
 st.markdown(
     """
     <style>
-    .day-card{border:1px solid #DDE2EA;border-radius:10px;padding:8px;min-height:118px;background:#fff;}
+    div.block-container, [data-testid="stAppViewBlockContainer"]{
+        max-width:820px;
+        margin:0 auto;
+        padding-left:1.5rem;
+        padding-right:1.5rem;
+    }
+    .day-card{border:1px solid #DDE2EA;border-radius:10px;padding:6px;min-height:112px;background:#fff;}
     .day-card.outside{background:#F0F1F4;opacity:.6;border-style:dashed;}
     .day-card.holiday{background:#FDF2F2;border-color:#E4A5A5;}
     .day-card.full{background:#FCEEDD;border-color:#B45309;}
-    .day-num{font-weight:700;font-size:13px;}
+    .day-num{font-weight:700;font-size:12.5px;}
     .day-num.holiday{color:#B91C1C;}
-    .holiday-label{font-size:11px;color:#B91C1C;font-weight:700;margin-top:6px;}
-    .pill{border-radius:7px;padding:4px 6px;font-size:11.5px;font-weight:700;color:#fff;margin-top:5px;}
-    .month-title{background:#0F766E;color:#fff;padding:8px 14px;border-radius:8px;
-                 font-weight:800;font-size:18px;text-align:center;margin-bottom:10px;}
+    .holiday-label{font-size:10.5px;color:#B91C1C;font-weight:700;margin-top:6px;}
+    .pill{border-radius:7px;padding:3px 5px;font-size:11px;font-weight:700;color:#fff;margin-top:4px;
+          overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+    .month-title{background:#0F766E;color:#fff;padding:7px 12px;border-radius:8px;
+                 font-weight:800;font-size:16px;text-align:center;margin-bottom:10px;}
     </style>
     """,
     unsafe_allow_html=True,
