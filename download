@@ -1,0 +1,4 @@
+bi_scheduler_data.db
+bi_scheduler_data.db-*
+__pycache__/
+*.pyc
