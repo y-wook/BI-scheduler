@@ -12,6 +12,8 @@ st.set_page_config(page_title="BI 스케줄러", page_icon="🗓️", layout="wi
 
 MAX_PER_DAY = 2
 COLORS = ["#0F766E", "#B45309", "#4338CA", "#BE185D"]
+# 팀원 순서대로 매칭될 이모티콘 컬러 서클 (청록, 갈색/주황, 보라, 핑크)
+COLOR_EMOJIS = ["🟢", "🟤", "🔵", "🟣"]
 DAY_LABELS = ["월", "화", "수", "목", "금"]
 DEFAULT_TEAM = ["팀원1", "팀원2", "팀원3", "팀원4"]
 DB_PATH = Path(__file__).parent / "bi_scheduler_data.db"
@@ -109,7 +111,7 @@ def remove_booking(date_str, name):
 init_db()
 
 # ============================================================
-# 날짜 계산
+# 날짜 및 색상 계산
 # ============================================================
 def month_weeks(year, month):
     first = datetime.date(year, month, 1)
@@ -133,8 +135,14 @@ def color_for(name, team):
     return COLORS[idx % len(COLORS)]
 
 
+def emoji_for(name, team):
+    """팀원 이름에 맞는 고유 컬러 이모티콘을 반환합니다."""
+    idx = team.index(name) if name in team else 0
+    return COLOR_EMOJIS[idx % len(COLOR_EMOJIS)]
+
+
 # ============================================================
-# 스타일 (아이폰 12 대응 정밀 미디어 쿼리 포함)
+# 스타일 (아이폰 12 대응 정밀 미디어 쿼리)
 # ============================================================
 st.markdown(
     """
@@ -146,7 +154,6 @@ st.markdown(
         padding-right:1.0rem;
     }
     
-    /* 5칸 가로 배치 강제 및 여백 최적화 */
     div[data-testid="stHorizontalBlock"]{
         display: flex !important;
         flex-wrap: nowrap !important;
@@ -159,7 +166,6 @@ st.markdown(
         width: 100% !important;
     }
     
-    /* 디자인 요소 */
     .day-card{border:1px solid #DDE2EA;border-radius:10px;padding:8px;min-height:112px;background:#fff;}
     .day-card.outside{background:#F0F1F4;opacity:.5;border-style:dashed;}
     .day-card.holiday{background:#FDF2F2;border-color:#E4A5A5;}
@@ -172,13 +178,12 @@ st.markdown(
     .month-title{background:#0F766E;color:#fff;padding:8px 12px;border-radius:8px;
                  font-weight:800;font-size:18px;text-align:center;margin-bottom:12px;}
 
-    /* 컴팩트한 취소/신청 버튼 스타일 관리를 위한 기본 마진 제거 */
     div[data-testid="column"] button {
         margin-top: 4px !important;
         width: 100% !important;
     }
 
-    /* ===== 아이폰 12 및 모바일 환경 (화면 폭 430px 이하 완벽 대응) ===== */
+    /* ===== 아이폰 12 및 모바일 환경 최적화 ===== */
     @media (max-width: 430px){
         div.block-container, [data-testid="stAppViewBlockContainer"]{
             padding-left:0.25rem !important;
@@ -195,9 +200,8 @@ st.markdown(
         h1{font-size:18px !important;}
         [data-testid="stCaptionContainer"]{font-size:10px !important;}
         
-        /* 모바일용 버튼 텍스트 초소형화 및 여백 제거 */
         div[data-testid="column"] button p {
-            font-size: 8px !important;
+            font-size: 8.5px !important;
             font-weight: bold !important;
         }
         div[data-testid="column"] button {
@@ -221,7 +225,6 @@ if "cur_year" not in st.session_state:
     st.session_state.cur_year = today.year
     st.session_state.cur_month = today.month
 
-# 특정 날짜의 신청 패널 오픈 여부를 저장할 딕셔너리 상태 초기화
 if "open_add_panel" not in st.session_state:
     st.session_state.open_add_panel = {}
 
@@ -305,7 +308,7 @@ for week in weeks:
             css_class += " full"
 
         with col:
-            # 1. 날짜 카드 렌더링 (날짜 및 이미 신청한 사람 상단 표시)
+            # 1. 날짜 카드 렌더링
             date_label = f"{date.day}" + ("" if in_month else "·외")
             num_class = "day-num holiday" if holiday_name else "day-num"
             html = f'<div class="{css_class}"><div class="{num_class}">{date_label}</div>'
@@ -325,27 +328,25 @@ for week in weeks:
                         remove_booking(date_str, n)
                         st.rerun()
 
-                # 신청 버튼 레이아웃 (새로운 UX 구조)
+                # 신청 패널 레이아웃 (컬러 이모티콘 도입)
                 if len(booked) < MAX_PER_DAY:
                     available = [m for m in team if m not in booked]
                     if available:
-                        # 현재 날짜의 패널이 열려있는지 확인
                         is_panel_open = st.session_state.open_add_panel.get(date_str, False)
 
                         if not is_panel_open:
-                            # 기본 상태: + 신청 버튼 하나만 보여줌
                             if st.button("+ 신청", key=f"open-{date_str}"):
                                 st.session_state.open_add_panel[date_str] = True
                                 st.rerun()
                         else:
-                            # 열린 상태: 신청 가능한 팀원 목록이 버튼으로 쭈르륵 나옴
+                            # 기존 손가락(✍) 대신 팀원 고유 순서에 맞춘 색상 원형 이모티콘 제공
                             for member in available:
-                                if st.button(f"✍ {member}", key=f"add-{date_str}-{member}"):
+                                member_emoji = emoji_for(member, team)
+                                if st.button(f"{member_emoji} {member}", key=f"add-{date_str}-{member}"):
                                     add_booking(date_str, member)
-                                    st.session_state.open_add_panel[date_str] = False # 신청 후 닫기
+                                    st.session_state.open_add_panel[date_str] = False
                                     st.rerun()
                             
-                            # 펼치기 취소 버튼
                             if st.button("닫기", key=f"close-{date_str}"):
                                 st.session_state.open_add_panel[date_str] = False
                                 st.rerun()
