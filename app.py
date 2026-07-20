@@ -13,7 +13,7 @@ st.set_page_config(page_title="BI 스케줄러", page_icon="🗓️", layout="wi
 MAX_PER_DAY = 2
 COLORS = ["#0F766E", "#B45309", "#4338CA", "#BE185D"]
 # 팀원 순서대로 매칭될 이모티콘 컬러 서클 (청록, 갈색/주황, 보라, 핑크)
-COLOR_EMOJIS = ["🟢", "🟤", "🔵", "🟣"]
+COLOR_EMOJIS = ["🟢", "🟤", "🔵", "🔴"]
 DAY_LABELS = ["월", "화", "수", "목", "금"]
 DEFAULT_TEAM = ["팀원1", "팀원2", "팀원3", "팀원4"]
 DB_PATH = Path(__file__).parent / "bi_scheduler_data.db"
@@ -308,10 +308,9 @@ for week in weeks:
             css_class += " full"
 
         with col:
-            # 1. 날짜 카드 렌더링
-            date_label = f"{date.day}" + ("" if in_month else "·외")
+            # 1. 날짜 카드 렌더링 (텍스트 결합 없이 오직 해당 날짜 숫자만 출력하도록 수정)
             num_class = "day-num holiday" if holiday_name else "day-num"
-            html = f'<div class="{css_class}"><div class="{num_class}">{date_label}</div>'
+            html = f'<div class="{css_class}"><div class="{num_class}">{date.day}</div>'
             if holiday_name:
                 html += f'<div class="holiday-label">{holiday_name}</div>'
             else:
@@ -328,7 +327,7 @@ for week in weeks:
                         remove_booking(date_str, n)
                         st.rerun()
 
-                # 신청 패널 레이아웃 (컬러 이모티콘 도입)
+                # 신청 패널 레이아웃
                 if len(booked) < MAX_PER_DAY:
                     available = [m for m in team if m not in booked]
                     if available:
@@ -339,7 +338,6 @@ for week in weeks:
                                 st.session_state.open_add_panel[date_str] = True
                                 st.rerun()
                         else:
-                            # 기존 손가락(✍) 대신 팀원 고유 순서에 맞춘 색상 원형 이모티콘 제공
                             for member in available:
                                 member_emoji = emoji_for(member, team)
                                 if st.button(f"{member_emoji} {member}", key=f"add-{date_str}-{member}"):
