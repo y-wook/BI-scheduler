@@ -140,10 +140,21 @@ st.markdown(
     """
     <style>
     div.block-container, [data-testid="stAppViewBlockContainer"]{
-        max-width:820px;
+        max-width:960px;
+        min-width:760px;
         margin:0 auto;
         padding-left:1.5rem;
         padding-right:1.5rem;
+        overflow-x:auto;
+    }
+    /* 모바일에서도 5칸 가로 배치를 유지 (기본은 세로로 쌓임) */
+    div[data-testid="stHorizontalBlock"]{
+        flex-wrap:nowrap !important;
+        flex-direction:row !important;
+    }
+    div[data-testid="column"]{
+        min-width:130px !important;
+        width:auto !important;
     }
     .day-card{border:1px solid #DDE2EA;border-radius:10px;padding:6px;min-height:112px;background:#fff;}
     .day-card.outside{background:#F0F1F4;opacity:.6;border-style:dashed;}
