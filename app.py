@@ -47,7 +47,7 @@ def get_client():
     )
     return gspread.authorize(creds)
 
-
+@st.cache_resource
 def get_spreadsheet():
     return get_client().open_by_key(st.secrets["sheet_id"])
 
