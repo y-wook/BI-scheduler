@@ -15,7 +15,6 @@ COLORS = ["#0F766E", "#B45309", "#4338CA", "#BE185D"]
 DAY_LABELS = ["월", "화", "수", "목", "금"]
 DEFAULT_TEAM = ["팀원1", "팀원2", "팀원3", "팀원4"]
 TEAM_SHEET_NAME = "team"
-BOOKINGS_SHEET_NAME = "bookings"
 
 HOLIDAYS = {
     "2026-01-01": "신정", "2026-02-16": "설날 연휴", "2026-02-17": "설날", "2026-02-18": "설날 연휴",
@@ -87,21 +86,25 @@ def save_team(names):
     old_names = load_team()
     _save_team_raw(names)
     sh = get_spreadsheet()
-    ws = get_or_create_worksheet(sh, BOOKINGS_SHEET_NAME, ["date", "name"])
-    cells = ws.get_all_values()
-    for old, new in zip(old_names, names):
-        if old == new:
+    for ws in sh.worksheets():
+        if not ws.title.startswith("bookings-"):
             continue
-        for i, row in enumerate(cells[1:], start=2):
-            if len(row) >= 2 and row[1] == old:
-                ws.update_cell(i, 2, new)
+        cells = ws.get_all_values()
+        for old, new in zip(old_names, names):
+            if old == new:
+                continue
+            for i, row in enumerate(cells[1:], start=2):
+                if len(row) >= 2 and row[1] == old:
+                    ws.update_cell(i, 2, new)
     load_team.clear()
+    load_bookings_for_month.clear()
 
 
-@st.cache_data(ttl=5)
-def load_bookings():
+@st.cache_data(ttl=8)
+def load_bookings_for_month(year, month):
     sh = get_spreadsheet()
-    ws = get_or_create_worksheet(sh, BOOKINGS_SHEET_NAME, ["date", "name"])
+    tab = f"bookings-{year:04d}-{month:02d}"
+    ws = get_or_create_worksheet(sh, tab, ["date", "name"])
     records = ws.get_all_records()
     booked = {}
     for rec in records:
@@ -113,22 +116,32 @@ def load_bookings():
     return booked
 
 
+def load_bookings_for_weeks(weeks):
+    months_needed = sorted({(d.year, d.month) for week in weeks for d in week})
+    merged = {}
+    for (y, m) in months_needed:
+        merged.update(load_bookings_for_month(y, m))
+    return merged
+
+
 def add_booking(date_str, name):
+    y, m = int(date_str[:4]), int(date_str[5:7])
     sh = get_spreadsheet()
-    ws = get_or_create_worksheet(sh, BOOKINGS_SHEET_NAME, ["date", "name"])
+    ws = get_or_create_worksheet(sh, f"bookings-{y:04d}-{m:02d}", ["date", "name"])
     ws.append_row([date_str, name])
-    load_bookings.clear()
+    load_bookings_for_month.clear()
 
 
 def remove_booking(date_str, name):
+    y, m = int(date_str[:4]), int(date_str[5:7])
     sh = get_spreadsheet()
-    ws = get_or_create_worksheet(sh, BOOKINGS_SHEET_NAME, ["date", "name"])
+    ws = get_or_create_worksheet(sh, f"bookings-{y:04d}-{m:02d}", ["date", "name"])
     cells = ws.get_all_values()
     for i, row in enumerate(cells[1:], start=2):
         if len(row) >= 2 and row[0] == date_str and row[1] == name:
             ws.delete_rows(i)
             break
-    load_bookings.clear()
+    load_bookings_for_month.clear()
 
 
 # ============================================================
@@ -291,8 +304,8 @@ st.markdown(f'<div class="month-title">{cur_year}년 {cur_month}월</div>', unsa
 # ============================================================
 # 캘린더 렌더링
 # ============================================================
-bookings = load_bookings()
 weeks = month_weeks(cur_year, cur_month)
+bookings = load_bookings_for_weeks(weeks)
 
 header_cols = st.columns(5)
 for c, label in zip(header_cols, DAY_LABELS):
