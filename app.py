@@ -1,9 +1,9 @@
 import datetime
 import calendar as pycal
-import sqlite3
-from pathlib import Path
 
 import streamlit as st
+import gspread
+from google.oauth2.service_account import Credentials
 
 # ============================================================
 # 기본 설정
@@ -12,11 +12,10 @@ st.set_page_config(page_title="BI 스케줄러", page_icon="🗓️", layout="wi
 
 MAX_PER_DAY = 2
 COLORS = ["#0F766E", "#B45309", "#4338CA", "#BE185D"]
-# 팀원 순서대로 매칭될 이모티콘 컬러 서클 (청록, 갈색/주황, 보라, 핑크)
-COLOR_EMOJIS = ["🟢", "🟤", "🔵", "🔴"]
 DAY_LABELS = ["월", "화", "수", "목", "금"]
 DEFAULT_TEAM = ["팀원1", "팀원2", "팀원3", "팀원4"]
-DB_PATH = Path(__file__).parent / "bi_scheduler_data.db"
+TEAM_SHEET_NAME = "team"
+BOOKINGS_SHEET_NAME = "bookings"
 
 HOLIDAYS = {
     "2026-01-01": "신정", "2026-02-16": "설날 연휴", "2026-02-17": "설날", "2026-02-18": "설날 연휴",
@@ -37,81 +36,103 @@ HOLIDAYS = {
 }
 
 # ============================================================
-# SQLite 저장소
+# 구글시트 연결 (실시간 공용 저장소 — 앱이 재시작돼도 데이터가 유지됨)
 # ============================================================
-def get_conn():
-    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
-    conn.execute("PRAGMA journal_mode=WAL;")
-    return conn
+SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 
 
-def init_db():
-    conn = get_conn()
-    conn.execute("CREATE TABLE IF NOT EXISTS team (id INTEGER PRIMARY KEY, name TEXT NOT NULL)")
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS bookings ("
-        "id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT NOT NULL, name TEXT NOT NULL)"
+@st.cache_resource
+def get_client():
+    creds = Credentials.from_service_account_info(
+        st.secrets["gcp_service_account"], scopes=SCOPES
     )
-    conn.commit()
-    row = conn.execute("SELECT COUNT(*) FROM team").fetchone()
-    if row[0] == 0:
-        conn.executemany("INSERT INTO team (name) VALUES (?)", [(n,) for n in DEFAULT_TEAM])
-        conn.commit()
-    conn.close()
+    return gspread.authorize(creds)
 
 
+def get_spreadsheet():
+    return get_client().open_by_key(st.secrets["sheet_id"])
+
+
+def get_or_create_worksheet(sh, title, header):
+    try:
+        ws = sh.worksheet(title)
+    except gspread.WorksheetNotFound:
+        ws = sh.add_worksheet(title=title, rows=1000, cols=len(header))
+        ws.append_row(header)
+    return ws
+
+
+@st.cache_data(ttl=8)
 def load_team():
-    conn = get_conn()
-    rows = conn.execute("SELECT name FROM team ORDER BY id").fetchall()
-    conn.close()
-    names = [r[0] for r in rows]
+    sh = get_spreadsheet()
+    ws = get_or_create_worksheet(sh, TEAM_SHEET_NAME, ["name"])
+    values = ws.col_values(1)[1:]
+    names = [v for v in values if v.strip()]
+    if not names:
+        names = DEFAULT_TEAM[:]
+        _save_team_raw(names)
     return names[:4] if len(names) >= 4 else (names + DEFAULT_TEAM[len(names):])[:4]
 
 
+def _save_team_raw(names):
+    sh = get_spreadsheet()
+    ws = get_or_create_worksheet(sh, TEAM_SHEET_NAME, ["name"])
+    ws.clear()
+    ws.append_row(["name"])
+    for n in names:
+        ws.append_row([n])
+
+
 def save_team(names):
-    conn = get_conn()
     old_names = load_team()
-    conn.execute("DELETE FROM team")
-    conn.executemany("INSERT INTO team (name) VALUES (?)", [(n,) for n in names])
+    _save_team_raw(names)
+    sh = get_spreadsheet()
+    ws = get_or_create_worksheet(sh, BOOKINGS_SHEET_NAME, ["date", "name"])
+    cells = ws.get_all_values()
     for old, new in zip(old_names, names):
-        if old != new:
-            conn.execute("UPDATE bookings SET name = ? WHERE name = ?", (new, old))
-    conn.commit()
-    conn.close()
+        if old == new:
+            continue
+        for i, row in enumerate(cells[1:], start=2):
+            if len(row) >= 2 and row[1] == old:
+                ws.update_cell(i, 2, new)
+    load_team.clear()
 
 
+@st.cache_data(ttl=5)
 def load_bookings():
-    conn = get_conn()
-    rows = conn.execute("SELECT date, name FROM bookings ORDER BY id").fetchall()
-    conn.close()
+    sh = get_spreadsheet()
+    ws = get_or_create_worksheet(sh, BOOKINGS_SHEET_NAME, ["date", "name"])
+    records = ws.get_all_records()
     booked = {}
-    for date_str, name in rows:
-        booked.setdefault(date_str, []).append(name)
+    for rec in records:
+        d = str(rec.get("date", "")).strip()
+        n = str(rec.get("name", "")).strip()
+        if not d or not n:
+            continue
+        booked.setdefault(d, []).append(n)
     return booked
 
 
 def add_booking(date_str, name):
-    conn = get_conn()
-    conn.execute("INSERT INTO bookings (date, name) VALUES (?, ?)", (date_str, name))
-    conn.commit()
-    conn.close()
+    sh = get_spreadsheet()
+    ws = get_or_create_worksheet(sh, BOOKINGS_SHEET_NAME, ["date", "name"])
+    ws.append_row([date_str, name])
+    load_bookings.clear()
 
 
 def remove_booking(date_str, name):
-    conn = get_conn()
-    row = conn.execute(
-        "SELECT id FROM bookings WHERE date = ? AND name = ? LIMIT 1", (date_str, name)
-    ).fetchone()
-    if row:
-        conn.execute("DELETE FROM bookings WHERE id = ?", (row[0],))
-        conn.commit()
-    conn.close()
+    sh = get_spreadsheet()
+    ws = get_or_create_worksheet(sh, BOOKINGS_SHEET_NAME, ["date", "name"])
+    cells = ws.get_all_values()
+    for i, row in enumerate(cells[1:], start=2):
+        if len(row) >= 2 and row[0] == date_str and row[1] == name:
+            ws.delete_rows(i)
+            break
+    load_bookings.clear()
 
-
-init_db()
 
 # ============================================================
-# 날짜 및 색상 계산
+# 날짜 계산
 # ============================================================
 def month_weeks(year, month):
     first = datetime.date(year, month, 1)
@@ -135,14 +156,8 @@ def color_for(name, team):
     return COLORS[idx % len(COLORS)]
 
 
-def emoji_for(name, team):
-    """팀원 이름에 맞는 고유 컬러 이모티콘을 반환합니다."""
-    idx = team.index(name) if name in team else 0
-    return COLOR_EMOJIS[idx % len(COLOR_EMOJIS)]
-
-
 # ============================================================
-# 스타일 (아이폰 12 대응 정밀 미디어 쿼리)
+# 스타일
 # ============================================================
 st.markdown(
     """
@@ -150,66 +165,62 @@ st.markdown(
     div.block-container, [data-testid="stAppViewBlockContainer"]{
         max-width:960px;
         margin:0 auto;
-        padding-left:1.0rem;
-        padding-right:1.0rem;
+        padding-left:1.5rem;
+        padding-right:1.5rem;
     }
-    
     div[data-testid="stHorizontalBlock"]{
-        display: flex !important;
-        flex-wrap: nowrap !important;
-        flex-direction: row !important;
-        gap: 6px !important;
+        flex-wrap:nowrap !important;
+        flex-direction:row !important;
+        gap:6px !important;
     }
     div[data-testid="column"]{
-        flex: 1 1 0% !important;
-        min-width: 0 !important;
-        width: 100% !important;
+        min-width:110px;
+        width:auto !important;
     }
-    
-    .day-card{border:1px solid #DDE2EA;border-radius:10px;padding:8px;min-height:112px;background:#fff;}
-    .day-card.outside{background:#F0F1F4;opacity:.5;border-style:dashed;}
+    .day-card{border:1px solid #DDE2EA;border-radius:10px;padding:6px;min-height:112px;background:#fff;}
+    .day-card.outside{background:#F0F1F4;opacity:.6;border-style:dashed;}
     .day-card.holiday{background:#FDF2F2;border-color:#E4A5A5;}
     .day-card.full{background:#FCEEDD;border-color:#B45309;}
-    .day-num{font-weight:700;font-size:13px;color:#1E293B;}
+    .day-num{font-weight:700;font-size:12.5px;}
     .day-num.holiday{color:#B91C1C;}
     .holiday-label{font-size:10.5px;color:#B91C1C;font-weight:700;margin-top:6px;}
-    .pill{border-radius:7px;padding:4px 6px;font-size:11px;font-weight:700;color:#fff;margin-top:4px;
-          overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center;}
-    .month-title{background:#0F766E;color:#fff;padding:8px 12px;border-radius:8px;
-                 font-weight:800;font-size:18px;text-align:center;margin-bottom:12px;}
+    .pill{border-radius:7px;padding:3px 5px;font-size:11px;font-weight:700;color:#fff;margin-top:4px;
+          overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+    .month-title{background:#0F766E;color:#fff;padding:7px 12px;border-radius:8px;
+                 font-weight:800;font-size:16px;text-align:center;margin-bottom:10px;}
 
-    div[data-testid="column"] button {
-        margin-top: 4px !important;
-        width: 100% !important;
-    }
-
-    /* ===== 아이폰 12 및 모바일 환경 최적화 ===== */
-    @media (max-width: 430px){
+    @media (max-width: 700px){
         div.block-container, [data-testid="stAppViewBlockContainer"]{
-            padding-left:0.25rem !important;
-            padding-right:0.25rem !important;
+            padding-left:0.4rem;
+            padding-right:0.4rem;
         }
         div[data-testid="stHorizontalBlock"]{
             gap:3px !important;
         }
-        .day-card{padding:4px;min-height:75px;border-radius:6px;}
-        .day-num{font-size:10px;}
-        .holiday-label{font-size:7px;margin-top:2px;line-height:1.1;}
-        .pill{font-size:8.5px;padding:2px 3px;margin-top:2px;border-radius:4px;}
-        .month-title{font-size:14px;padding:6px 8px;margin-bottom:8px;}
-        h1{font-size:18px !important;}
-        [data-testid="stCaptionContainer"]{font-size:10px !important;}
-        
-        div[data-testid="column"] button p {
-            font-size: 8.5px !important;
-            font-weight: bold !important;
+        div[data-testid="column"]{
+            min-width:0;
+            padding:0 !important;
         }
-        div[data-testid="column"] button {
-            padding: 1px 2px !important;
-            min-height: 20px !important;
-            height: 20px !important;
-            line-height: 1 !important;
-            border-radius: 4px !important;
+        .day-card{padding:3px;min-height:82px;border-radius:6px;}
+        .day-num{font-size:10px;}
+        .holiday-label{font-size:7.5px;margin-top:3px;line-height:1.2;}
+        .pill{font-size:8px;padding:2px 3px;margin-top:2px;border-radius:5px;}
+        .month-title{font-size:13px;padding:5px 8px;}
+        h1{font-size:20px !important;}
+        [data-testid="stCaptionContainer"]{font-size:11px !important;}
+        div[data-testid="column"] .stButton button{
+            font-size:8.5px !important;
+            padding:1px 3px !important;
+            min-height:0 !important;
+            height:auto !important;
+        }
+        div[data-testid="column"] [data-baseweb="select"]{
+            font-size:8.5px !important;
+            min-height:0 !important;
+        }
+        div[data-testid="column"] [data-baseweb="select"] > div{
+            padding:1px 4px !important;
+            min-height:22px !important;
         }
     }
     </style>
@@ -224,9 +235,6 @@ today = datetime.date.today()
 if "cur_year" not in st.session_state:
     st.session_state.cur_year = today.year
     st.session_state.cur_month = today.month
-
-if "open_add_panel" not in st.session_state:
-    st.session_state.open_add_panel = {}
 
 # ============================================================
 # 헤더
@@ -255,9 +263,9 @@ with st.expander("팀원 이름 수정"):
 # ============================================================
 # 월 네비게이션
 # ============================================================
-nav1, nav2, nav3, nav4 = st.columns([1.2, 2.6, 1.2, 2], gap="small")
+nav1, nav2, nav3, nav4 = st.columns([1, 3, 1, 2])
 with nav1:
-    if st.button("‹ 이전 달", key="btn-prev-month"):
+    if st.button("‹ 이전 달"):
         m = st.session_state.cur_month - 1
         y = st.session_state.cur_year
         if m == 0:
@@ -265,7 +273,7 @@ with nav1:
         st.session_state.cur_year, st.session_state.cur_month = y, m
         st.rerun()
 with nav3:
-    if st.button("다음 달 ›", key="btn-next-month"):
+    if st.button("다음 달 ›"):
         m = st.session_state.cur_month + 1
         y = st.session_state.cur_year
         if m == 13:
@@ -273,7 +281,7 @@ with nav3:
         st.session_state.cur_year, st.session_state.cur_month = y, m
         st.rerun()
 with nav4:
-    if st.button("이번달로 이동", key="btn-today"):
+    if st.button("이번달로 이동"):
         st.session_state.cur_year, st.session_state.cur_month = today.year, today.month
         st.rerun()
 
@@ -288,7 +296,7 @@ weeks = month_weeks(cur_year, cur_month)
 
 header_cols = st.columns(5)
 for c, label in zip(header_cols, DAY_LABELS):
-    c.markdown(f"<div style='text-align:center; font-weight:700; font-size:13px;'>{label}</div>", unsafe_allow_html=True)
+    c.markdown(f"**{label}**")
 
 for week in weeks:
     cols = st.columns(5)
@@ -308,9 +316,9 @@ for week in weeks:
             css_class += " full"
 
         with col:
-            # 1. 날짜 카드 렌더링 (텍스트 결합 없이 오직 해당 날짜 숫자만 출력하도록 수정)
+            date_label = f"{date.day}" + ("" if in_month else " (다른달)")
             num_class = "day-num holiday" if holiday_name else "day-num"
-            html = f'<div class="{css_class}"><div class="{num_class}">{date.day}</div>'
+            html = f'<div class="{css_class}"><div class="{num_class}">{date_label}</div>'
             if holiday_name:
                 html += f'<div class="holiday-label">{holiday_name}</div>'
             else:
@@ -319,38 +327,23 @@ for week in weeks:
             html += "</div>"
             st.markdown(html, unsafe_allow_html=True)
 
-            # 2. 버튼 및 인터랙션 제어
             if not holiday_name:
-                # 취소 버튼 레이아웃
                 for n in booked:
-                    if st.button(f"✕ {n}", key=f"cancel-{date_str}-{n}", help=f"{n} 신청 취소"):
+                    if st.button(f"취소: {n}", key=f"cancel-{date_str}-{n}"):
                         remove_booking(date_str, n)
                         st.rerun()
-
-                # 신청 패널 레이아웃
                 if len(booked) < MAX_PER_DAY:
                     available = [m for m in team if m not in booked]
                     if available:
-                        is_panel_open = st.session_state.open_add_panel.get(date_str, False)
-
-                        if not is_panel_open:
-                            if st.button("+ 신청", key=f"open-{date_str}"):
-                                st.session_state.open_add_panel[date_str] = True
-                                st.rerun()
-                        else:
-                            for member in available:
-                                member_emoji = emoji_for(member, team)
-                                if st.button(f"{member_emoji} {member}", key=f"add-{date_str}-{member}"):
-                                    add_booking(date_str, member)
-                                    st.session_state.open_add_panel[date_str] = False
-                                    st.rerun()
-                            
-                            if st.button("닫기", key=f"close-{date_str}"):
-                                st.session_state.open_add_panel[date_str] = False
-                                st.rerun()
+                        sel = st.selectbox(
+                            "신청자", available, key=f"sel-{date_str}", label_visibility="collapsed"
+                        )
+                        if st.button("+ 신청", key=f"add-{date_str}"):
+                            add_booking(date_str, sel)
+                            st.rerun()
 
 st.divider()
 st.caption(
-    "이 앱은 별도 로그인이나 외부 계정 없이, 앱 자체 데이터베이스에 반차 신청 내역을 저장해요. "
-    "같은 링크에 접속한 팀원 모두에게 실시간으로 반영됩니다."
+    "이 앱은 구글시트를 데이터 저장소로 사용해요. 앱이 재시작되어도 신청 데이터는 안전하게 유지됩니다. "
+    "로그인 없이 누구나 사용할 수 있어요."
 )
