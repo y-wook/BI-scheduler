@@ -335,12 +335,19 @@ for week in weeks:
                 if len(booked) < MAX_PER_DAY:
                     available = [m for m in team if m not in booked]
                     if available:
-                        sel = st.selectbox(
-                            "신청자", available, key=f"sel-{date_str}", label_visibility="collapsed"
-                        )
-                        if st.button("+ 신청", key=f"add-{date_str}"):
-                            add_booking(date_str, sel)
-                            st.rerun()
+                        with st.popover("+ 신청", use_container_width=True):
+                            for m in available:
+                                pc1, pc2 = st.columns([1, 5])
+                                with pc1:
+                                    st.markdown(
+                                        f'<div style="width:12px;height:12px;border-radius:50%;'
+                                        f'background:{color_for(m, team)};margin-top:9px;"></div>',
+                                        unsafe_allow_html=True,
+                                    )
+                                with pc2:
+                                    if st.button(m, key=f"add-{date_str}-{m}", use_container_width=True):
+                                        add_booking(date_str, m)
+                                        st.rerun()
 
 st.divider()
 st.caption(
