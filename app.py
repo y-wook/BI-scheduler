@@ -190,12 +190,18 @@ st.markdown(
         min-width:110px;
         width:auto !important;
     }
-    .day-card{border:1px solid #DDE2EA;border-radius:10px;padding:6px;min-height:112px;background:#fff;}
-    .day-card.outside{background:#F0F1F4;opacity:.6;border-style:dashed;}
-    .day-card.holiday{background:#FDF2F2;border-color:#E4A5A5;}
+    /* 날짜 칸 하나하나를 감싸는 테두리 박스 (st.container(border=True)가 만드는 요소) */
+    div[data-testid="stVerticalBlockBorderWrapper"]{
+        min-height:112px;
+        padding:2px;
+    }
+    div[data-testid="stVerticalBlockBorderWrapper"] div[data-testid="stVerticalBlock"]{
+        gap:3px;
+    }
     .day-num{font-weight:700;font-size:12.5px;}
     .day-num.holiday{color:#B91C1C;}
-    .holiday-label{font-size:10.5px;color:#B91C1C;font-weight:700;margin-top:6px;}
+    .day-num.outside{color:#B7BEC9;font-weight:500;}
+    .holiday-label{font-size:10.5px;color:#B91C1C;font-weight:700;margin-top:2px;}
     .month-title{background:#0F766E;color:#fff;padding:7px 12px;border-radius:8px;
                  font-weight:800;font-size:16px;text-align:center;margin-bottom:10px;}
 
@@ -223,9 +229,12 @@ st.markdown(
             min-width:0;
             padding:0 !important;
         }
-        .day-card{padding:3px;min-height:82px;border-radius:6px;}
+        div[data-testid="stVerticalBlockBorderWrapper"]{
+            min-height:82px;
+            padding:1px;
+        }
         .day-num{font-size:10px;}
-        .holiday-label{font-size:7.5px;margin-top:3px;line-height:1.2;}
+        .holiday-label{font-size:7.5px;margin-top:2px;line-height:1.2;}
         .name-pill{font-size:8px;padding:1px 4px;border-radius:5px;}
         .month-title{font-size:13px;padding:5px 8px;}
         h1{font-size:20px !important;}
@@ -320,50 +329,48 @@ for week in weeks:
         holiday_name = HOLIDAYS.get(date_str)
         booked = bookings.get(date_str, [])
 
-        css_class = "day-card"
-        if not in_month:
-            css_class += " outside"
-        if holiday_name:
-            css_class += " holiday"
-
         with col:
-            date_label = f"{date.day}" + ("" if in_month else " (다른달)")
-            num_class = "day-num holiday" if holiday_name else "day-num"
-            html = f'<div class="{css_class}"><div class="{num_class}">{date_label}</div>'
-            if holiday_name:
-                html += f'<div class="holiday-label">{holiday_name}</div>'
-            html += "</div>"
-            st.markdown(html, unsafe_allow_html=True)
+            # 날짜 칸 전체를 테두리 박스 하나로 묶음 (날짜 숫자, 이름, 신청 버튼이 전부 이 안에 들어감)
+            with st.container(border=True):
+                date_label = f"{date.day}" + ("" if in_month else " (다른달)")
+                if holiday_name:
+                    num_class = "day-num holiday"
+                elif not in_month:
+                    num_class = "day-num outside"
+                else:
+                    num_class = "day-num"
+                st.markdown(f'<div class="{num_class}">{date_label}</div>', unsafe_allow_html=True)
 
-            if not holiday_name:
-                # 신청된 이름 각각: 컬러 배지 + 바로 옆 X 취소 버튼
-                for n in booked:
-                    nc1, nc2 = st.columns([4, 1])
-                    with nc1:
-                        st.markdown(
-                            f'<div class="name-pill" style="background:{color_for(n, team)}">{n}</div>',
-                            unsafe_allow_html=True,
-                        )
-                    with nc2:
-                        if st.button("✕", key=f"cancel-{date_str}-{n}"):
-                            remove_booking(date_str, n)
-                            st.rerun()
+                if holiday_name:
+                    st.markdown(f'<div class="holiday-label">{holiday_name}</div>', unsafe_allow_html=True)
+                else:
+                    for n in booked:
+                        nc1, nc2 = st.columns([4, 1])
+                        with nc1:
+                            st.markdown(
+                                f'<div class="name-pill" style="background:{color_for(n, team)}">{n}</div>',
+                                unsafe_allow_html=True,
+                            )
+                        with nc2:
+                            if st.button("X", key=f"cancel-{date_str}-{n}"):
+                                remove_booking(date_str, n)
+                                st.rerun()
 
-                available = [m for m in team if m not in booked]
-                if available:
-                    with st.popover("+ 신청", use_container_width=True):
-                        for m in available:
-                            pc1, pc2 = st.columns([1, 5])
-                            with pc1:
-                                st.markdown(
-                                    f'<div style="width:12px;height:12px;border-radius:50%;'
-                                    f'background:{color_for(m, team)};margin-top:9px;"></div>',
-                                    unsafe_allow_html=True,
-                                )
-                            with pc2:
-                                if st.button(m, key=f"add-{date_str}-{m}", use_container_width=True):
-                                    add_booking(date_str, m)
-                                    st.rerun()
+                    available = [m for m in team if m not in booked]
+                    if available:
+                        with st.popover("+ 신청", use_container_width=True):
+                            for m in available:
+                                pc1, pc2 = st.columns([1, 5])
+                                with pc1:
+                                    st.markdown(
+                                        f'<div style="width:12px;height:12px;border-radius:50%;'
+                                        f'background:{color_for(m, team)};margin-top:9px;"></div>',
+                                        unsafe_allow_html=True,
+                                    )
+                                with pc2:
+                                    if st.button(m, key=f"add-{date_str}-{m}", use_container_width=True):
+                                        add_booking(date_str, m)
+                                        st.rerun()
 
 st.divider()
 st.caption(
