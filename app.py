@@ -10,7 +10,6 @@ from google.oauth2.service_account import Credentials
 # ============================================================
 st.set_page_config(page_title="BI 스케줄러", page_icon="🗓️", layout="wide")
 
-MAX_PER_DAY = 2
 COLORS = ["#0F766E", "#B45309", "#4338CA", "#BE185D"]
 DAY_LABELS = ["월", "화", "수", "목", "금"]
 DEFAULT_TEAM = ["팀원1", "팀원2", "팀원3", "팀원4"]
@@ -46,6 +45,7 @@ def get_client():
         st.secrets["gcp_service_account"], scopes=SCOPES
     )
     return gspread.authorize(creds)
+
 
 @st.cache_resource
 def get_spreadsheet():
@@ -193,14 +193,23 @@ st.markdown(
     .day-card{border:1px solid #DDE2EA;border-radius:10px;padding:6px;min-height:112px;background:#fff;}
     .day-card.outside{background:#F0F1F4;opacity:.6;border-style:dashed;}
     .day-card.holiday{background:#FDF2F2;border-color:#E4A5A5;}
-    .day-card.full{background:#FCEEDD;border-color:#B45309;}
     .day-num{font-weight:700;font-size:12.5px;}
     .day-num.holiday{color:#B91C1C;}
     .holiday-label{font-size:10.5px;color:#B91C1C;font-weight:700;margin-top:6px;}
-    .pill{border-radius:7px;padding:3px 5px;font-size:11px;font-weight:700;color:#fff;margin-top:4px;
-          overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
     .month-title{background:#0F766E;color:#fff;padding:7px 12px;border-radius:8px;
                  font-weight:800;font-size:16px;text-align:center;margin-bottom:10px;}
+
+    .name-pill{
+        border-radius:6px;padding:2px 6px;font-size:11px;font-weight:700;color:#fff;
+        overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+    }
+    div[data-testid="column"] .stButton button{
+        padding:1px 6px;
+        min-height:0;
+        height:24px;
+        font-size:11px;
+        line-height:1;
+    }
 
     @media (max-width: 700px){
         div.block-container, [data-testid="stAppViewBlockContainer"]{
@@ -217,7 +226,7 @@ st.markdown(
         .day-card{padding:3px;min-height:82px;border-radius:6px;}
         .day-num{font-size:10px;}
         .holiday-label{font-size:7.5px;margin-top:3px;line-height:1.2;}
-        .pill{font-size:8px;padding:2px 3px;margin-top:2px;border-radius:5px;}
+        .name-pill{font-size:8px;padding:1px 4px;border-radius:5px;}
         .month-title{font-size:13px;padding:5px 8px;}
         h1{font-size:20px !important;}
         [data-testid="stCaptionContainer"]{font-size:11px !important;}
@@ -225,15 +234,7 @@ st.markdown(
             font-size:8.5px !important;
             padding:1px 3px !important;
             min-height:0 !important;
-            height:auto !important;
-        }
-        div[data-testid="column"] [data-baseweb="select"]{
-            font-size:8.5px !important;
-            min-height:0 !important;
-        }
-        div[data-testid="column"] [data-baseweb="select"] > div{
-            padding:1px 4px !important;
-            min-height:22px !important;
+            height:20px !important;
         }
     }
     </style>
@@ -253,7 +254,7 @@ if "cur_year" not in st.session_state:
 # 헤더
 # ============================================================
 st.title("🗓️ BI 스케줄러")
-st.caption("주 1회 오후 반차 · 하루 최대 2명까지 신청할 수 있어요 · 로그인 없이 누구나 사용할 수 있어요")
+st.caption("주 1회 오후 반차 · 로그인 없이 누구나 사용할 수 있어요")
 
 team = load_team()
 
@@ -318,15 +319,12 @@ for week in weeks:
         in_month = date.month == cur_month
         holiday_name = HOLIDAYS.get(date_str)
         booked = bookings.get(date_str, [])
-        is_full = len(booked) >= MAX_PER_DAY
 
         css_class = "day-card"
         if not in_month:
             css_class += " outside"
         if holiday_name:
             css_class += " holiday"
-        elif is_full:
-            css_class += " full"
 
         with col:
             date_label = f"{date.day}" + ("" if in_month else " (다른달)")
@@ -334,33 +332,38 @@ for week in weeks:
             html = f'<div class="{css_class}"><div class="{num_class}">{date_label}</div>'
             if holiday_name:
                 html += f'<div class="holiday-label">{holiday_name}</div>'
-            else:
-                for n in booked:
-                    html += f'<div class="pill" style="background:{color_for(n, team)}">{n}</div>'
             html += "</div>"
             st.markdown(html, unsafe_allow_html=True)
 
             if not holiday_name:
+                # 신청된 이름 각각: 컬러 배지 + 바로 옆 X 취소 버튼
                 for n in booked:
-                    if st.button(f"취소: {n}", key=f"cancel-{date_str}-{n}"):
-                        remove_booking(date_str, n)
-                        st.rerun()
-                if len(booked) < MAX_PER_DAY:
-                    available = [m for m in team if m not in booked]
-                    if available:
-                        with st.popover("+ 신청", use_container_width=True):
-                            for m in available:
-                                pc1, pc2 = st.columns([1, 5])
-                                with pc1:
-                                    st.markdown(
-                                        f'<div style="width:12px;height:12px;border-radius:50%;'
-                                        f'background:{color_for(m, team)};margin-top:9px;"></div>',
-                                        unsafe_allow_html=True,
-                                    )
-                                with pc2:
-                                    if st.button(m, key=f"add-{date_str}-{m}", use_container_width=True):
-                                        add_booking(date_str, m)
-                                        st.rerun()
+                    nc1, nc2 = st.columns([4, 1])
+                    with nc1:
+                        st.markdown(
+                            f'<div class="name-pill" style="background:{color_for(n, team)}">{n}</div>',
+                            unsafe_allow_html=True,
+                        )
+                    with nc2:
+                        if st.button("✕", key=f"cancel-{date_str}-{n}"):
+                            remove_booking(date_str, n)
+                            st.rerun()
+
+                available = [m for m in team if m not in booked]
+                if available:
+                    with st.popover("+ 신청", use_container_width=True):
+                        for m in available:
+                            pc1, pc2 = st.columns([1, 5])
+                            with pc1:
+                                st.markdown(
+                                    f'<div style="width:12px;height:12px;border-radius:50%;'
+                                    f'background:{color_for(m, team)};margin-top:9px;"></div>',
+                                    unsafe_allow_html=True,
+                                )
+                            with pc2:
+                                if st.button(m, key=f"add-{date_str}-{m}", use_container_width=True):
+                                    add_booking(date_str, m)
+                                    st.rerun()
 
 st.divider()
 st.caption(
