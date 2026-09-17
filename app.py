@@ -1,5 +1,6 @@
 import datetime
 import calendar as pycal
+import urllib.parse as urlparse
 
 import streamlit as st
 import gspread
@@ -170,6 +171,18 @@ def color_for(name, team):
 
 
 # ============================================================
+# 취소 요청 처리 (배지 안의 X 링크를 눌렀을 때, 쿼리 파라미터로 감지)
+# ============================================================
+qp = st.query_params
+if "cancel" in qp:
+    raw = qp["cancel"]
+    if "::" in raw:
+        d_part, n_part = raw.split("::", 1)
+        remove_booking(urlparse.unquote(d_part), urlparse.unquote(n_part))
+    st.query_params.clear()
+    st.rerun()
+
+# ============================================================
 # 스타일
 # ============================================================
 st.markdown(
@@ -205,10 +218,16 @@ st.markdown(
     .month-title{background:#0F766E;color:#fff;padding:7px 12px;border-radius:8px;
                  font-weight:800;font-size:16px;text-align:center;margin-bottom:10px;}
 
+    /* 이름 + X가 한 덩어리인 배지 (버튼이 아니라 링크라서 색을 자유롭게 입힐 수 있음) */
     .name-pill{
-        border-radius:6px;padding:2px 6px;font-size:11px;font-weight:700;color:#fff;
-        overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+        display:flex;align-items:center;justify-content:space-between;gap:6px;
+        border-radius:6px;padding:3px 6px;font-size:11px;font-weight:700;color:#fff;
+        text-decoration:none;cursor:pointer;margin-bottom:3px;
     }
+    .name-pill:hover{filter:brightness(0.92);}
+    .name-pill .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+    .name-pill .x{opacity:.85;font-weight:800;flex-shrink:0;}
+
     div[data-testid="column"] .stButton button{
         padding:1px 6px;
         min-height:0;
@@ -235,7 +254,7 @@ st.markdown(
         }
         .day-num{font-size:10px;}
         .holiday-label{font-size:7.5px;margin-top:2px;line-height:1.2;}
-        .name-pill{font-size:8px;padding:1px 4px;border-radius:5px;}
+        .name-pill{font-size:8px;padding:2px 4px;border-radius:5px;}
         .month-title{font-size:13px;padding:5px 8px;}
         h1{font-size:20px !important;}
         [data-testid="stCaptionContainer"]{font-size:11px !important;}
@@ -330,7 +349,7 @@ for week in weeks:
         booked = bookings.get(date_str, [])
 
         with col:
-            # 날짜 칸 전체를 테두리 박스 하나로 묶음 (날짜 숫자, 이름, 신청 버튼이 전부 이 안에 들어감)
+            # 날짜 칸 전체를 테두리 박스 하나로 묶음
             with st.container(border=True):
                 date_label = f"{date.day}" + ("" if in_month else " (다른달)")
                 if holiday_name:
@@ -345,16 +364,12 @@ for week in weeks:
                     st.markdown(f'<div class="holiday-label">{holiday_name}</div>', unsafe_allow_html=True)
                 else:
                     for n in booked:
-                        nc1, nc2 = st.columns([4, 1])
-                        with nc1:
-                            st.markdown(
-                                f'<div class="name-pill" style="background:{color_for(n, team)}">{n}</div>',
-                                unsafe_allow_html=True,
-                            )
-                        with nc2:
-                            if st.button("X", key=f"cancel-{date_str}-{n}"):
-                                remove_booking(date_str, n)
-                                st.rerun()
+                        href = f"?cancel={urlparse.quote(date_str)}::{urlparse.quote(n)}"
+                        st.markdown(
+                            f'<a class="name-pill" href="{href}" style="background:{color_for(n, team)}">'
+                            f'<span class="nm">{n}</span><span class="x">✕</span></a>',
+                            unsafe_allow_html=True,
+                        )
 
                     available = [m for m in team if m not in booked]
                     if available:
