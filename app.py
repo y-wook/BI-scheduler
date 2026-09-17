@@ -86,17 +86,23 @@ def _save_team_raw(names):
 def save_team(names):
     old_names = load_team()
     _save_team_raw(names)
+
     sh = get_spreadsheet()
+
     for ws in sh.worksheets():
         if not ws.title.startswith("bookings-"):
             continue
+
         cells = ws.get_all_values()
+
         for old, new in zip(old_names, names):
             if old == new:
                 continue
+
             for i, row in enumerate(cells[1:], start=2):
                 if len(row) >= 2 and row[1] == old:
                     ws.update_cell(i, 2, new)
+
     load_team.clear()
     load_bookings_for_month.clear()
 
@@ -106,42 +112,63 @@ def load_bookings_for_month(year, month):
     sh = get_spreadsheet()
     tab = f"bookings-{year:04d}-{month:02d}"
     ws = get_or_create_worksheet(sh, tab, ["date", "name"])
+
     records = ws.get_all_records()
     booked = {}
+
     for rec in records:
         d = str(rec.get("date", "")).strip()
         n = str(rec.get("name", "")).strip()
+
         if not d or not n:
             continue
+
         booked.setdefault(d, []).append(n)
+
     return booked
 
 
 def load_bookings_for_weeks(weeks):
     months_needed = sorted({(d.year, d.month) for week in weeks for d in week})
     merged = {}
+
     for (y, m) in months_needed:
         merged.update(load_bookings_for_month(y, m))
+
     return merged
 
 
 def add_booking(date_str, name):
     y, m = int(date_str[:4]), int(date_str[5:7])
+
     sh = get_spreadsheet()
-    ws = get_or_create_worksheet(sh, f"bookings-{y:04d}-{m:02d}", ["date", "name"])
+    ws = get_or_create_worksheet(
+        sh,
+        f"bookings-{y:04d}-{m:02d}",
+        ["date", "name"]
+    )
+
     ws.append_row([date_str, name])
     load_bookings_for_month.clear()
 
 
 def remove_booking(date_str, name):
     y, m = int(date_str[:4]), int(date_str[5:7])
+
     sh = get_spreadsheet()
-    ws = get_or_create_worksheet(sh, f"bookings-{y:04d}-{m:02d}", ["date", "name"])
+    ws = get_or_create_worksheet(
+        sh,
+        f"bookings-{y:04d}-{m:02d}",
+        ["date", "name"]
+    )
+
     cells = ws.get_all_values()
+
     for i, row in enumerate(cells[1:], start=2):
         if len(row) >= 2 and row[0] == date_str and row[1] == name:
             ws.delete_rows(i)
             break
+
     load_bookings_for_month.clear()
 
 
@@ -151,17 +178,27 @@ def remove_booking(date_str, name):
 def month_weeks(year, month):
     first = datetime.date(year, month, 1)
     last = datetime.date(year, month, pycal.monthrange(year, month)[1])
+
     start = first - datetime.timedelta(days=first.weekday())
-    end = last + datetime.timedelta(days=(4 - last.weekday())) if last.weekday() <= 4 \
+
+    end = (
+        last + datetime.timedelta(days=(4 - last.weekday()))
+        if last.weekday() <= 4
         else last + datetime.timedelta(days=(7 - last.weekday()))
+    )
+
     weeks, week, d = [], [], start
+
     while d <= end:
         if d.weekday() <= 4:
             week.append(d)
+
             if len(week) == 5:
                 weeks.append(week)
                 week = []
+
         d += datetime.timedelta(days=1)
+
     return weeks
 
 
@@ -171,16 +208,24 @@ def color_for(name, team):
 
 
 # ============================================================
-# 취소 요청 처리 (배지 안의 X 링크를 눌렀을 때, 쿼리 파라미터로 감지)
+# 취소 요청 처리
+# (배지 안의 X 링크를 눌렀을 때, 쿼리 파라미터로 감지)
 # ============================================================
 qp = st.query_params
+
 if "cancel" in qp:
     raw = qp["cancel"]
+
     if "::" in raw:
         d_part, n_part = raw.split("::", 1)
-        remove_booking(urlparse.unquote(d_part), urlparse.unquote(n_part))
+        remove_booking(
+            urlparse.unquote(d_part),
+            urlparse.unquote(n_part)
+        )
+
     st.query_params.clear()
     st.rerun()
+
 
 # ============================================================
 # 스타일
@@ -188,46 +233,147 @@ if "cancel" in qp:
 st.markdown(
     """
     <style>
-    div.block-container, [data-testid="stAppViewBlockContainer"]{
+
+    /* --------------------------------------------------------
+       전체 레이아웃
+    -------------------------------------------------------- */
+    div.block-container,
+    [data-testid="stAppViewBlockContainer"]{
         max-width:960px;
         margin:0 auto;
         padding-left:1.5rem;
         padding-right:1.5rem;
     }
+
+
+    /* --------------------------------------------------------
+       가로 배치
+    -------------------------------------------------------- */
     div[data-testid="stHorizontalBlock"]{
         flex-wrap:nowrap !important;
         flex-direction:row !important;
         gap:6px !important;
     }
+
+
     div[data-testid="column"]{
         min-width:110px;
         width:auto !important;
     }
-    /* 날짜 칸 하나하나를 감싸는 테두리 박스 (st.container(border=True)가 만드는 요소) */
+
+
+    /* --------------------------------------------------------
+       날짜 칸
+    -------------------------------------------------------- */
     div[data-testid="stVerticalBlockBorderWrapper"]{
         min-height:112px;
         padding:2px;
     }
+
+
     div[data-testid="stVerticalBlockBorderWrapper"] div[data-testid="stVerticalBlock"]{
         gap:3px;
     }
-    .day-num{font-weight:700;font-size:12.5px;}
-    .day-num.holiday{color:#B91C1C;}
-    .day-num.outside{color:#B7BEC9;font-weight:500;}
-    .holiday-label{font-size:10.5px;color:#B91C1C;font-weight:700;margin-top:2px;}
-    .month-title{background:#0F766E;color:#fff;padding:7px 12px;border-radius:8px;
-                 font-weight:800;font-size:16px;text-align:center;margin-bottom:10px;}
 
-    /* 이름 + X가 한 덩어리인 배지 (버튼이 아니라 링크라서 색을 자유롭게 입힐 수 있음) */
-    .name-pill{
-        display:flex;align-items:center;justify-content:space-between;gap:6px;
-        border-radius:6px;padding:3px 6px;font-size:11px;font-weight:700;color:#fff;
-        text-decoration:none;cursor:pointer;margin-bottom:3px;
+
+    /* --------------------------------------------------------
+       날짜 숫자
+    -------------------------------------------------------- */
+    .day-num{
+        font-weight:700;
+        font-size:12.5px;
     }
-    .name-pill:hover{filter:brightness(0.92);}
-    .name-pill .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-    .name-pill .x{opacity:.85;font-weight:800;flex-shrink:0;}
 
+    .day-num.holiday{
+        color:#B91C1C;
+    }
+
+    .day-num.outside{
+        color:#B7BEC9;
+        font-weight:500;
+    }
+
+
+    /* --------------------------------------------------------
+       공휴일
+    -------------------------------------------------------- */
+    .holiday-label{
+        font-size:10.5px;
+        color:#B91C1C;
+        font-weight:700;
+        margin-top:2px;
+    }
+
+
+    /* --------------------------------------------------------
+       월 제목
+    -------------------------------------------------------- */
+    .month-title{
+        background:#0F766E;
+        color:#fff;
+        padding:7px 12px;
+        border-radius:8px;
+        font-weight:800;
+        font-size:16px;
+        text-align:center;
+        margin-bottom:10px;
+    }
+
+
+    /* --------------------------------------------------------
+       신청된 팀원 이름 배지
+    -------------------------------------------------------- */
+    .name-pill{
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        gap:6px;
+        border-radius:6px;
+        padding:3px 6px;
+        font-size:11px;
+        font-weight:700;
+        color:#fff !important;
+        text-decoration:none;
+        cursor:pointer;
+        margin-bottom:3px;
+    }
+
+    .name-pill:hover{
+        filter:brightness(0.92);
+    }
+
+    .name-pill .nm{
+        overflow:hidden;
+        text-overflow:ellipsis;
+        white-space:nowrap;
+    }
+
+    .name-pill .x{
+        opacity:.85;
+        font-weight:800;
+        flex-shrink:0;
+    }
+
+
+    /* --------------------------------------------------------
+       팀원 이름 수정 입력창
+       ★ 글씨를 흰색으로 변경
+    -------------------------------------------------------- */
+    div[data-testid="stTextInput"] input{
+        color:#FFFFFF !important;
+        -webkit-text-fill-color:#FFFFFF !important;
+    }
+
+    /* 입력창 placeholder도 밝게 표시 */
+    div[data-testid="stTextInput"] input::placeholder{
+        color:rgba(255,255,255,0.65) !important;
+        -webkit-text-fill-color:rgba(255,255,255,0.65) !important;
+    }
+
+
+    /* --------------------------------------------------------
+       신청 버튼
+    -------------------------------------------------------- */
     div[data-testid="column"] .stButton button{
         padding:1px 6px;
         min-height:0;
@@ -236,28 +382,61 @@ st.markdown(
         line-height:1;
     }
 
-    @media (max-width: 700px){
-        div.block-container, [data-testid="stAppViewBlockContainer"]{
+
+    /* --------------------------------------------------------
+       모바일
+    -------------------------------------------------------- */
+    @media (max-width:700px){
+
+        div.block-container,
+        [data-testid="stAppViewBlockContainer"]{
             padding-left:0.4rem;
             padding-right:0.4rem;
         }
+
         div[data-testid="stHorizontalBlock"]{
             gap:3px !important;
         }
+
         div[data-testid="column"]{
             min-width:0;
             padding:0 !important;
         }
+
         div[data-testid="stVerticalBlockBorderWrapper"]{
             min-height:82px;
             padding:1px;
         }
-        .day-num{font-size:10px;}
-        .holiday-label{font-size:7.5px;margin-top:2px;line-height:1.2;}
-        .name-pill{font-size:8px;padding:2px 4px;border-radius:5px;}
-        .month-title{font-size:13px;padding:5px 8px;}
-        h1{font-size:20px !important;}
-        [data-testid="stCaptionContainer"]{font-size:11px !important;}
+
+        .day-num{
+            font-size:10px;
+        }
+
+        .holiday-label{
+            font-size:7.5px;
+            margin-top:2px;
+            line-height:1.2;
+        }
+
+        .name-pill{
+            font-size:8px;
+            padding:2px 4px;
+            border-radius:5px;
+        }
+
+        .month-title{
+            font-size:13px;
+            padding:5px 8px;
+        }
+
+        h1{
+            font-size:20px !important;
+        }
+
+        [data-testid="stCaptionContainer"]{
+            font-size:11px !important;
+        }
+
         div[data-testid="column"] .stButton button{
             font-size:8.5px !important;
             padding:1px 3px !important;
@@ -265,18 +444,22 @@ st.markdown(
             height:20px !important;
         }
     }
+
     </style>
     """,
     unsafe_allow_html=True,
 )
 
+
 # ============================================================
 # 상태 초기화
 # ============================================================
 today = datetime.date.today()
+
 if "cur_year" not in st.session_state:
     st.session_state.cur_year = today.year
     st.session_state.cur_month = today.month
+
 
 # ============================================================
 # 헤더
@@ -286,49 +469,95 @@ st.caption("주 1회 오후 반차 · 로그인 없이 누구나 사용할 수 �
 
 team = load_team()
 
+
+# ============================================================
+# 팀원 이름 수정
+# ============================================================
 with st.expander("팀원 이름 수정"):
+
     cols = st.columns(4)
     new_names = []
+
     for i, col in enumerate(cols):
+
         with col:
+
             st.markdown(
-                f'<div style="width:14px;height:14px;border-radius:50%;background:{COLORS[i]};'
-                f'display:inline-block;margin-right:6px;"></div>',
+                f'<div style="width:14px;height:14px;border-radius:50%;'
+                f'background:{COLORS[i]};display:inline-block;margin-right:6px;"></div>',
                 unsafe_allow_html=True,
             )
-            new_names.append(st.text_input(f"팀원 {i+1}", value=team[i], key=f"team_input_{i}"))
+
+            new_names.append(
+                st.text_input(
+                    f"팀원 {i+1}",
+                    value=team[i],
+                    key=f"team_input_{i}"
+                )
+            )
+
     if st.button("팀원 이름 저장"):
         save_team(new_names)
         st.success("저장했어요.")
         st.rerun()
 
+
 # ============================================================
 # 월 네비게이션
 # ============================================================
 nav1, nav2, nav3, nav4 = st.columns([1, 3, 1, 2])
+
+
 with nav1:
     if st.button("‹ 이전 달"):
+
         m = st.session_state.cur_month - 1
         y = st.session_state.cur_year
+
         if m == 0:
             m, y = 12, y - 1
-        st.session_state.cur_year, st.session_state.cur_month = y, m
-        st.rerun()
-with nav3:
-    if st.button("다음 달 ›"):
-        m = st.session_state.cur_month + 1
-        y = st.session_state.cur_year
-        if m == 13:
-            m, y = 1, y + 1
-        st.session_state.cur_year, st.session_state.cur_month = y, m
-        st.rerun()
-with nav4:
-    if st.button("이번달로 이동"):
-        st.session_state.cur_year, st.session_state.cur_month = today.year, today.month
+
+        st.session_state.cur_year = y
+        st.session_state.cur_month = m
+
         st.rerun()
 
-cur_year, cur_month = st.session_state.cur_year, st.session_state.cur_month
-st.markdown(f'<div class="month-title">{cur_year}년 {cur_month}월</div>', unsafe_allow_html=True)
+
+with nav3:
+    if st.button("다음 달 ›"):
+
+        m = st.session_state.cur_month + 1
+        y = st.session_state.cur_year
+
+        if m == 13:
+            m, y = 1, y + 1
+
+        st.session_state.cur_year = y
+        st.session_state.cur_month = m
+
+        st.rerun()
+
+
+with nav4:
+    if st.button("이번달로 이동"):
+
+        st.session_state.cur_year = today.year
+        st.session_state.cur_month = today.month
+
+        st.rerun()
+
+
+# ============================================================
+# 현재 월 표시
+# ============================================================
+cur_year = st.session_state.cur_year
+cur_month = st.session_state.cur_month
+
+st.markdown(
+    f'<div class="month-title">{cur_year}년 {cur_month}월</div>',
+    unsafe_allow_html=True
+)
+
 
 # ============================================================
 # 캘린더 렌더링
@@ -336,59 +565,133 @@ st.markdown(f'<div class="month-title">{cur_year}년 {cur_month}월</div>', unsa
 weeks = month_weeks(cur_year, cur_month)
 bookings = load_bookings_for_weeks(weeks)
 
+
+# ============================================================
+# 요일 헤더
+# ============================================================
 header_cols = st.columns(5)
+
 for c, label in zip(header_cols, DAY_LABELS):
     c.markdown(f"**{label}**")
 
+
+# ============================================================
+# 날짜별 캘린더
+# ============================================================
 for week in weeks:
+
     cols = st.columns(5)
+
     for col, date in zip(cols, week):
+
         date_str = date.isoformat()
         in_month = date.month == cur_month
         holiday_name = HOLIDAYS.get(date_str)
         booked = bookings.get(date_str, [])
 
         with col:
+
             # 날짜 칸 전체를 테두리 박스 하나로 묶음
             with st.container(border=True):
-                date_label = f"{date.day}" + ("" if in_month else " (다른달)")
+
+                date_label = f"{date.day}" + (
+                    "" if in_month else " (다른달)"
+                )
+
                 if holiday_name:
                     num_class = "day-num holiday"
                 elif not in_month:
                     num_class = "day-num outside"
                 else:
                     num_class = "day-num"
-                st.markdown(f'<div class="{num_class}">{date_label}</div>', unsafe_allow_html=True)
 
+                st.markdown(
+                    f'<div class="{num_class}">{date_label}</div>',
+                    unsafe_allow_html=True
+                )
+
+
+                # ------------------------------------------------
+                # 공휴일 표시
+                # ------------------------------------------------
                 if holiday_name:
-                    st.markdown(f'<div class="holiday-label">{holiday_name}</div>', unsafe_allow_html=True)
+
+                    st.markdown(
+                        f'<div class="holiday-label">{holiday_name}</div>',
+                        unsafe_allow_html=True
+                    )
+
+
+                # ------------------------------------------------
+                # 신청자 표시
+                # ------------------------------------------------
                 else:
+
                     for n in booked:
-                        href = f"?cancel={urlparse.quote(date_str)}::{urlparse.quote(n)}"
+
+                        href = (
+                            f"?cancel={urlparse.quote(date_str)}::"
+                            f"{urlparse.quote(n)}"
+                        )
+
                         st.markdown(
-                            f'<a class="name-pill" href="{href}" style="background:{color_for(n, team)}">'
-                            f'<span class="nm">{n}</span><span class="x">✕</span></a>',
+                            f'<a class="name-pill" '
+                            f'href="{href}" '
+                            f'style="background:{color_for(n, team)}">'
+                            f'<span class="nm">{n}</span>'
+                            f'<span class="x">✕</span>'
+                            f'</a>',
                             unsafe_allow_html=True,
                         )
 
-                    available = [m for m in team if m not in booked]
+
+                    # ------------------------------------------------
+                    # 신청 가능한 팀원
+                    # ------------------------------------------------
+                    available = [
+                        m for m in team
+                        if m not in booked
+                    ]
+
                     if available:
+
                         with st.popover("+ 신청", use_container_width=True):
+
                             for m in available:
+
                                 pc1, pc2 = st.columns([1, 5])
+
+
                                 with pc1:
+
                                     st.markdown(
-                                        f'<div style="width:12px;height:12px;border-radius:50%;'
-                                        f'background:{color_for(m, team)};margin-top:9px;"></div>',
+                                        f'<div style="width:12px;'
+                                        f'height:12px;'
+                                        f'border-radius:50%;'
+                                        f'background:{color_for(m, team)};'
+                                        f'margin-top:9px;"></div>',
                                         unsafe_allow_html=True,
                                     )
+
+
                                 with pc2:
-                                    if st.button(m, key=f"add-{date_str}-{m}", use_container_width=True):
+
+                                    if st.button(
+                                        m,
+                                        key=f"add-{date_str}-{m}",
+                                        use_container_width=True
+                                    ):
                                         add_booking(date_str, m)
                                         st.rerun()
 
+
+# ============================================================
+# 하단 안내
+# ============================================================
 st.divider()
+
 st.caption(
-    "이 앱은 구글시트를 데이터 저장소로 사용해요. 앱이 재시작되어도 신청 데이터는 안전하게 유지됩니다. "
+    "이 앱은 구글시트를 데이터 저장소로 사용해요. "
+    "앱이 재시작되어도 신청 데이터는 안전하게 유지됩니다. "
     "로그인 없이 누구나 사용할 수 있어요."
 )
